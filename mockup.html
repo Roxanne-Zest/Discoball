@@ -63,6 +63,7 @@
   (function () {
     const CONFIG = {
       urlMatch: [/.*/],
+      videoUrl: 'Discoball-vid.mp4',
       imageUrl: 'Discoball.png',
       imageBallCx: 520,
       imageBallCy: 585,
@@ -70,8 +71,8 @@
       ballRadius: 140,
       dropMs: 1150,
       retractMs: 700,
-      swayDeg: 2.4,
-      swayPeriodMs: 2400,
+      swayDeg: 0.8,
+      swayPeriodMs: 2800,
       spotIntervalMs: 90,
       zIndex: 2147483600,
     };
@@ -131,6 +132,17 @@
         fontSize: '14px', cursor: 'pointer', zIndex: '2',
       });
       overlay.appendChild(endBtn);
+
+      const video = document.createElement('video');
+      video.src = CONFIG.videoUrl;
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.style.display = 'none';
+      overlay.appendChild(video);
+      const playAttempt = video.play();
+      if (playAttempt && typeof playAttempt.catch === 'function') playAttempt.catch(() => {});
 
       const ctx = canvas.getContext('2d');
       let W = 0, H = 0, DPR = 1;
@@ -204,7 +216,18 @@
         ctx.lineTo(bx, by - R);
         ctx.stroke();
 
-        if (ballImage.complete && ballImage.naturalWidth > 0) {
+        if (video.readyState >= 2 && video.videoWidth > 0) {
+          const vw = video.videoWidth, vh = video.videoHeight;
+          const side = Math.min(vw, vh);
+          const sx = (vw - side) / 2;
+          const sy = (vh - side) / 2;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(bx, by, R, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(video, sx, sy, side, side, bx - R, by - R, R * 2, R * 2);
+          ctx.restore();
+        } else if (ballImage.complete && ballImage.naturalWidth > 0) {
           const sCx = CONFIG.imageBallCx;
           const sCy = CONFIG.imageBallCy;
           const sR  = CONFIG.imageBallR;
@@ -218,19 +241,19 @@
             bx - R, by - R, R * 2, R * 2
           );
           ctx.restore();
-          const rim = ctx.createRadialGradient(bx, by, R * 0.92, bx, by, R);
-          rim.addColorStop(0, 'rgba(0,0,0,0)');
-          rim.addColorStop(1, 'rgba(0,0,0,0.55)');
-          ctx.fillStyle = rim;
-          ctx.beginPath();
-          ctx.arc(bx, by, R, 0, Math.PI * 2);
-          ctx.fill();
         } else {
           ctx.fillStyle = '#222';
           ctx.beginPath();
           ctx.arc(bx, by, R, 0, Math.PI * 2);
           ctx.fill();
         }
+        const rim = ctx.createRadialGradient(bx, by, R * 0.92, bx, by, R);
+        rim.addColorStop(0, 'rgba(0,0,0,0)');
+        rim.addColorStop(1, 'rgba(0,0,0,0.55)');
+        ctx.fillStyle = rim;
+        ctx.beginPath();
+        ctx.arc(bx, by, R, 0, Math.PI * 2);
+        ctx.fill();
 
         if (active && now - lastSpotAt > CONFIG.spotIntervalMs) {
           lastSpotAt = now;
@@ -257,6 +280,7 @@
         cancelAnimationFrame(rafId);
         window.removeEventListener('resize', resize);
         window.removeEventListener('resize', computeTarget);
+        try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
         overlay.remove();
         if (onClosed) onClosed();
       }
