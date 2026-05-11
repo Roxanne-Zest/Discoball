@@ -6,8 +6,8 @@
  */
 (function () {
   const CONFIG = {
-    // Activate only on URLs matching this pattern. Adjust as needed.
-    urlMatch: /\/catalog\//,
+    // Activate only on URLs matching any of these patterns. Adjust as needed.
+    urlMatch: [/\/catalog\//, /\/support\/home/],
     ballRadius: 120,
     ringCount: 24,
     tileSize: 13,
@@ -17,7 +17,9 @@
     zIndex: 2147483600,
   };
 
-  if (!CONFIG.urlMatch.test(window.location.pathname + window.location.hash)) return;
+  const urlPath = window.location.pathname + window.location.hash;
+  const patterns = Array.isArray(CONFIG.urlMatch) ? CONFIG.urlMatch : [CONFIG.urlMatch];
+  if (!patterns.some((re) => re.test(urlPath))) return;
   if (window.top !== window.self) return; // only run in the top frame
   if (window.__discoBallLoaded) return;
   window.__discoBallLoaded = true;
