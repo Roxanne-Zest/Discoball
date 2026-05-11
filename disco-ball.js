@@ -1,6 +1,7 @@
 /*
  * Disco ball drop for Freshservice portal pages.
- * Self-contained IIFE. Drops a hanging disco ball (PNG image) with a
+ * Self-contained IIFE. Drops a hanging disco ball (looping MP4 of a
+ * spinning ball, with the still PNG as an instant fallback) with a
  * springy ease, scatters coloured light spots across the dimmed page,
  * and retracts on dismiss.
  *
@@ -8,19 +9,18 @@
  */
 (function () {
   const CONFIG = {
-    // Activate only on URLs matching any of these patterns.
     urlMatch: [/\/catalog\//, /\/support\/home/],
-    // Publicly reachable URL of the disco ball PNG.
+    videoUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball-vid.mp4',
     imageUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball.png',
-    // Position of the ball within the source image (px in the original PNG).
+    // Source crop in the still PNG (px in the original 1024x1024).
     imageBallCx: 520,
     imageBallCy: 585,
     imageBallR: 335,
     ballRadius: 140,
     dropMs: 1150,
     retractMs: 700,
-    swayDeg: 2.4,         // pendulum sway amplitude in degrees
-    swayPeriodMs: 2400,
+    swayDeg: 0.8,         // tiny natural sway; the video supplies the spin
+    swayPeriodMs: 2800,
     spotIntervalMs: 90,
     zIndex: 2147483600,
   };
@@ -32,6 +32,8 @@
   if (window.__discoBallLoaded) return;
   window.__discoBallLoaded = true;
 
+  // Still image preloads immediately as a fallback for the first frames
+  // while the bigger MP4 streams in.
   const ballImage = new Image();
   ballImage.crossOrigin = 'anonymous';
   ballImage.src = CONFIG.imageUrl;
@@ -87,6 +89,19 @@
     });
     overlay.appendChild(endBtn);
 
+    // Hidden video element; we sample it onto the canvas each frame.
+    const video = document.createElement('video');
+    video.src = CONFIG.videoUrl;
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.style.display = 'none';
+    overlay.appendChild(video);
+    const playAttempt = video.play();
+    if (playAttempt && typeof playAttempt.catch === 'function') playAttempt.catch(() => {});
+
     const ctx = canvas.getContext('2d');
     let W = 0, H = 0, DPR = 1;
     function resize() {
@@ -130,17 +145,55 @@
       return startY;
     }
 
+    function drawBall(bx, by) {
+      // Prefer the video once it has at least one current frame.
+      if (video.readyState >= 2 && video.videoWidth > 0) {
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const side = Math.min(vw, vh);
+        const sx = (vw - side) / 2;
+        const sy = (vh - side) / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(bx, by, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(video, sx, sy, side, side, bx - R, by - R, R * 2, R * 2);
+        ctx.restore();
+      } else if (ballImage.complete && ballImage.naturalWidth > 0) {
+        const sCx = CONFIG.imageBallCx, sCy = CONFIG.imageBallCy, sR = CONFIG.imageBallR;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(bx, by, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(
+          ballImage,
+          sCx - sR, sCy - sR, sR * 2, sR * 2,
+          bx - R, by - R, R * 2, R * 2
+        );
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#222';
+        ctx.beginPath();
+        ctx.arc(bx, by, R, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const rim = ctx.createRadialGradient(bx, by, R * 0.92, bx, by, R);
+      rim.addColorStop(0, 'rgba(0,0,0,0)');
+      rim.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = rim;
+      ctx.beginPath();
+      ctx.arc(bx, by, R, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     function frame(now) {
       const by = ballY(now);
       const swayRad = (CONFIG.swayDeg * Math.PI / 180) *
         Math.sin((now - startedAt) / CONFIG.swayPeriodMs * Math.PI * 2);
-      // Sway: pendulum-style rotation about the top anchor (y=0).
-      const bx = W / 2 + Math.sin(swayRad) * by;
+      const bx = W / 2 + Math.sin(swayRad) * Math.max(0, by);
       const active = phase === 'dropping' || phase === 'settled';
 
       ctx.clearRect(0, 0, W, H);
 
-      // Light spots behind the ball.
       for (let i = lightSpots.length - 1; i >= 0; i--) {
         const s = lightSpots[i];
         s.life -= 0.012;
@@ -154,7 +207,6 @@
         ctx.fillRect(s.x - r, s.y - r, r * 2, r * 2);
       }
 
-      // String from ceiling to top of ball, following the sway.
       ctx.strokeStyle = 'rgba(220,220,220,0.75)';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -162,38 +214,8 @@
       ctx.lineTo(bx, by - R);
       ctx.stroke();
 
-      // Ball.
-      if (ballImage.complete && ballImage.naturalWidth > 0) {
-        const sCx = CONFIG.imageBallCx;
-        const sCy = CONFIG.imageBallCy;
-        const sR  = CONFIG.imageBallR;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(bx, by, R, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(
-          ballImage,
-          sCx - sR, sCy - sR, sR * 2, sR * 2,
-          bx - R, by - R, R * 2, R * 2
-        );
-        ctx.restore();
-        // Soft rim shadow so the circle edge reads cleanly against the overlay.
-        const rim = ctx.createRadialGradient(bx, by, R * 0.92, bx, by, R);
-        rim.addColorStop(0, 'rgba(0,0,0,0)');
-        rim.addColorStop(1, 'rgba(0,0,0,0.55)');
-        ctx.fillStyle = rim;
-        ctx.beginPath();
-        ctx.arc(bx, by, R, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Loading: placeholder dark disc.
-        ctx.fillStyle = '#222';
-        ctx.beginPath();
-        ctx.arc(bx, by, R, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      drawBall(bx, by);
 
-      // Spawn light spots while the ball is hanging.
       if (active && now - lastSpotAt > CONFIG.spotIntervalMs) {
         lastSpotAt = now;
         const count = 2 + (Math.random() * 2 | 0);
@@ -219,6 +241,7 @@
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', resize);
       window.removeEventListener('resize', computeTarget);
+      try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
       overlay.remove();
       if (onClosed) onClosed();
     }
@@ -244,7 +267,6 @@
   }
 
   function pickHue() {
-    // Classic disco palette: pink, cyan, yellow, magenta, green.
     const palette = [320, 180, 50, 290, 130];
     return palette[(Math.random() * palette.length) | 0] + (Math.random() * 20 - 10);
   }
