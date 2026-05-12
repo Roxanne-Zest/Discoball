@@ -63,8 +63,8 @@
   (function () {
     const CONFIG = {
       urlMatch: [/.*/],
-      gifUrl: 'Discoball600x.gif',
-      imageUrl: 'Discoball.png',
+      gifUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball600x.gif',
+      imageUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball.png',
       imageBallCx: 520,
       imageBallCy: 585,
       imageBallR: 335,
@@ -86,9 +86,11 @@
     window.__discoBallLoaded = true;
 
     const ballImage = new Image();
+    ballImage.crossOrigin = 'anonymous';
     ballImage.src = CONFIG.imageUrl;
 
     const ballGif = new Image();
+    ballGif.crossOrigin = 'anonymous';
     ballGif.src = CONFIG.gifUrl;
 
     function init() {
