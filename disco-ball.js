@@ -23,6 +23,9 @@
     swayPeriodMs: 2800,
     spotIntervalMs: 90,
     zIndex: 2147483600,
+    // Pixels whose min(r,g,b) is within this many steps of 255 get faded to
+    // transparent, so the white video background drops out. 0 disables.
+    chromaKeyThreshold: 55,
   };
 
   const urlPath = window.location.pathname + window.location.hash;
@@ -103,6 +106,12 @@
     if (playAttempt && typeof playAttempt.catch === 'function') playAttempt.catch(() => {});
 
     const ctx = canvas.getContext('2d');
+
+    // Offscreen buffer for chroma-keying the white background out of the video.
+    const keyCanvas = document.createElement('canvas');
+    const keyCtx = keyCanvas.getContext('2d', { willReadFrequently: true });
+    let chromaKeyDisabled = false;
+
     let W = 0, H = 0, DPR = 1;
     function resize() {
       DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -152,11 +161,39 @@
         const side = Math.min(vw, vh);
         const sx = (vw - side) / 2;
         const sy = (vh - side) / 2;
+        const target = Math.max(64, Math.ceil(R * 2 * DPR));
+        if (keyCanvas.width !== target) {
+          keyCanvas.width = target;
+          keyCanvas.height = target;
+        }
+        keyCtx.clearRect(0, 0, target, target);
+        keyCtx.drawImage(video, sx, sy, side, side, 0, 0, target, target);
+
+        if (!chromaKeyDisabled && CONFIG.chromaKeyThreshold > 0) {
+          try {
+            const img = keyCtx.getImageData(0, 0, target, target);
+            const data = img.data;
+            const threshold = CONFIG.chromaKeyThreshold;
+            const cutoff = 255 - threshold;
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i], g = data[i + 1], b = data[i + 2];
+              const m = r < g ? (r < b ? r : b) : (g < b ? g : b);
+              if (m >= cutoff) {
+                const a = (255 - m) * (255 / threshold);
+                data[i + 3] = a < 0 ? 0 : (a > 255 ? 255 : a);
+              }
+            }
+            keyCtx.putImageData(img, 0, 0);
+          } catch (e) {
+            chromaKeyDisabled = true; // canvas tainted (CORS); skip from now on
+          }
+        }
+
         ctx.save();
         ctx.beginPath();
         ctx.arc(bx, by, R, 0, Math.PI * 2);
         ctx.clip();
-        ctx.drawImage(video, sx, sy, side, side, bx - R, by - R, R * 2, R * 2);
+        ctx.drawImage(keyCanvas, bx - R, by - R, R * 2, R * 2);
         ctx.restore();
       } else if (ballImage.complete && ballImage.naturalWidth > 0) {
         const sCx = CONFIG.imageBallCx, sCy = CONFIG.imageBallCy, sR = CONFIG.imageBallR;
