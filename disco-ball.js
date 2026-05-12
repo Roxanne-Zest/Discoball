@@ -45,11 +45,21 @@
   ballImage.crossOrigin = 'anonymous';
   ballImage.src = CONFIG.imageUrl;
 
-  // Animated GIF — browsers play it inside an Image, and drawImage samples
-  // whatever frame is currently displayed at call time.
+  // Animated GIF — browsers only run the animation timer when the element is
+  // attached to the rendered DOM. We park it offscreen-but-rendered so the
+  // animation actually advances; drawImage then samples the current frame.
   const ballGif = new Image();
   ballGif.crossOrigin = 'anonymous';
   ballGif.src = CONFIG.gifUrl;
+  Object.assign(ballGif.style, {
+    position: 'fixed', left: '0', top: '0', width: '1px', height: '1px',
+    opacity: '0.01', pointerEvents: 'none', zIndex: '-1',
+  });
+  function attachGif() {
+    if (!ballGif.isConnected && document.body) document.body.appendChild(ballGif);
+  }
+  if (document.body) attachGif();
+  else document.addEventListener('DOMContentLoaded', attachGif, { once: true });
 
   function init() {
     const trigger = document.createElement('button');
