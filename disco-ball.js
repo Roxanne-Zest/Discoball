@@ -16,6 +16,12 @@
     imageBallCx: 520,
     imageBallCy: 585,
     imageBallR: 335,
+    // Where the ball sits within the source video frame, as fractions of the
+    // video's dimensions. Tighten videoBallRFrac if you see chain / dead
+    // space; loosen it if the ball edges get cut off.
+    videoBallCxFrac: 0.50,
+    videoBallCyFrac: 0.56,
+    videoBallRFrac: 0.40,
     ballRadius: 140,
     dropMs: 1150,
     retractMs: 700,
@@ -171,9 +177,12 @@
 
       if (videoReady) {
         const vw = video.videoWidth, vh = video.videoHeight;
-        const side = Math.min(vw, vh);
-        const sx = (vw - side) / 2;
-        const sy = (vh - side) / 2;
+        const cropR = Math.min(vw, vh) * CONFIG.videoBallRFrac;
+        const cropCx = vw * CONFIG.videoBallCxFrac;
+        const cropCy = vh * CONFIG.videoBallCyFrac;
+        const sx = cropCx - cropR;
+        const sy = cropCy - cropR;
+        const side = cropR * 2;
         const target = Math.max(64, Math.ceil(R * 2 * DPR));
         if (keyCanvas.width !== target) {
           keyCanvas.width = target;
