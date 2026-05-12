@@ -63,11 +63,14 @@
   (function () {
     const CONFIG = {
       urlMatch: [/.*/],
-      gifUrl: 'Discoball600x.gif',
-      imageUrl: 'Discoball.png',
+      gifUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball600x.gif',
+      imageUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball.png',
       imageBallCx: 520,
       imageBallCy: 585,
       imageBallR: 335,
+      gifBallCx: 450,
+      gifBallCy: 510,
+      gifBallR: 320,
       ballRadius: 140,
       dropMs: 1150,
       retractMs: 700,
@@ -83,9 +86,11 @@
     window.__discoBallLoaded = true;
 
     const ballImage = new Image();
+    ballImage.crossOrigin = 'anonymous';
     ballImage.src = CONFIG.imageUrl;
 
     const ballGif = new Image();
+    ballGif.crossOrigin = 'anonymous';
     ballGif.src = CONFIG.gifUrl;
 
     function init() {
@@ -190,10 +195,10 @@
         const pngReady = ballImage.complete && ballImage.naturalWidth > 0;
 
         if (gifReady) {
-          const vw = ballGif.naturalWidth, vh = ballGif.naturalHeight;
-          const side = Math.min(vw, vh);
-          const sx = (vw - side) / 2;
-          const sy = (vh - side) / 2;
+          const gCx = CONFIG.gifBallCx, gCy = CONFIG.gifBallCy, gR = CONFIG.gifBallR;
+          const sx = gCx - gR;
+          const sy = gCy - gR;
+          const side = gR * 2;
           const target = Math.max(64, Math.ceil(R * 2 * DPR));
           if (keyCanvas.width !== target) {
             keyCanvas.width = target;
