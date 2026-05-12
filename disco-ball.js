@@ -15,6 +15,11 @@
     imageBallCx: 520,
     imageBallCy: 585,
     imageBallR: 335,
+    // Source crop in the GIF (px in the original 900x900). Tighten if you
+    // see white halo around the ball; loosen if the ball edges get cut off.
+    gifBallCx: 450,
+    gifBallCy: 510,
+    gifBallR: 320,
     ballRadius: 140,
     dropMs: 1150,
     retractMs: 700,
@@ -151,10 +156,10 @@
       const pngReady = ballImage.complete && ballImage.naturalWidth > 0;
 
       if (gifReady) {
-        const vw = ballGif.naturalWidth, vh = ballGif.naturalHeight;
-        const side = Math.min(vw, vh);
-        const sx = (vw - side) / 2;
-        const sy = (vh - side) / 2;
+        const gCx = CONFIG.gifBallCx, gCy = CONFIG.gifBallCy, gR = CONFIG.gifBallR;
+        const sx = gCx - gR;
+        const sy = gCy - gR;
+        const side = gR * 2;
         const target = Math.max(64, Math.ceil(R * 2 * DPR));
         if (keyCanvas.width !== target) {
           keyCanvas.width = target;
