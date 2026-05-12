@@ -1,25 +1,21 @@
 /*
  * Disco ball drop for Freshservice portal pages.
- * Self-contained IIFE. Drops a hanging disco ball (animated GIF of a
- * spinning ball) with a springy ease, scatters coloured light spots
- * across the dimmed page, and retracts on dismiss.
+ * Self-contained IIFE. Drops a looping MP4 of a spinning disco ball
+ * with a springy ease, chroma-keys the white video background out so
+ * the ball reads cleanly against the dark overlay, and scatters
+ * coloured light spots across the page.
  *
  * Must run in the top-level page (not inside an iframe).
  */
 (function () {
   const CONFIG = {
     urlMatch: [/\/catalog\//, /\/support\/home/],
-    gifUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball600x.gif',
+    videoUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball-vid.mp4',
     imageUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball.png',
     // Source crop in the still PNG (px in the original 1024x1024).
     imageBallCx: 520,
     imageBallCy: 585,
     imageBallR: 335,
-    // Source crop in the GIF (px in the original 900x900). Tighten if you
-    // see white halo around the ball; loosen if the ball edges get cut off.
-    gifBallCx: 450,
-    gifBallCy: 510,
-    gifBallR: 320,
     ballRadius: 140,
     dropMs: 1150,
     retractMs: 700,
@@ -27,10 +23,10 @@
     swayPeriodMs: 2800,
     spotIntervalMs: 90,
     zIndex: 2147483600,
-    // Pixels whose darkest channel is within this many steps of 255 get faded
-    // toward transparent (helps if the GIF still has white halo edges).
-    // Set to 0 to disable.
-    chromaKeyThreshold: 40,
+    // Pixels whose darkest channel is within this many steps of 255 get
+    // faded toward transparent (strips the white video background).
+    // 0 disables chroma keying entirely.
+    chromaKeyThreshold: 55,
   };
 
   const urlPath = window.location.pathname + window.location.hash;
@@ -40,26 +36,10 @@
   if (window.__discoBallLoaded) return;
   window.__discoBallLoaded = true;
 
-  // PNG fallback shown while the larger GIF is buffering.
+  // PNG fallback shown for the first frames while the MP4 buffers.
   const ballImage = new Image();
   ballImage.crossOrigin = 'anonymous';
   ballImage.src = CONFIG.imageUrl;
-
-  // Animated GIF — browsers only run the animation timer when the element is
-  // attached to the rendered DOM. We park it offscreen-but-rendered so the
-  // animation actually advances; drawImage then samples the current frame.
-  const ballGif = new Image();
-  ballGif.crossOrigin = 'anonymous';
-  ballGif.src = CONFIG.gifUrl;
-  Object.assign(ballGif.style, {
-    position: 'fixed', left: '0', top: '0', width: '1px', height: '1px',
-    opacity: '0.01', pointerEvents: 'none', zIndex: '-1',
-  });
-  function attachGif() {
-    if (!ballGif.isConnected && document.body) document.body.appendChild(ballGif);
-  }
-  if (document.body) attachGif();
-  else document.addEventListener('DOMContentLoaded', attachGif, { once: true });
 
   function init() {
     const trigger = document.createElement('button');
@@ -112,9 +92,21 @@
     });
     overlay.appendChild(endBtn);
 
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.src = CONFIG.videoUrl;
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.autoplay = true;
+    video.preload = 'auto';
+    video.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;';
+    overlay.appendChild(video);
+    const playAttempt = video.play();
+    if (playAttempt && typeof playAttempt.catch === 'function') playAttempt.catch(() => {});
+
     const ctx = canvas.getContext('2d');
 
-    // Offscreen buffer for sampling the GIF frame + optional chroma key.
     const keyCanvas = document.createElement('canvas');
     const keyCtx = keyCanvas.getContext('2d', { willReadFrequently: true });
     let chromaKeyDisabled = false;
@@ -162,21 +154,21 @@
     }
 
     function drawBall(bx, by) {
-      const gifReady = ballGif.complete && ballGif.naturalWidth > 0;
+      const videoReady = video.readyState >= 2 && video.videoWidth > 0;
       const pngReady = ballImage.complete && ballImage.naturalWidth > 0;
 
-      if (gifReady) {
-        const gCx = CONFIG.gifBallCx, gCy = CONFIG.gifBallCy, gR = CONFIG.gifBallR;
-        const sx = gCx - gR;
-        const sy = gCy - gR;
-        const side = gR * 2;
+      if (videoReady) {
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const side = Math.min(vw, vh);
+        const sx = (vw - side) / 2;
+        const sy = (vh - side) / 2;
         const target = Math.max(64, Math.ceil(R * 2 * DPR));
         if (keyCanvas.width !== target) {
           keyCanvas.width = target;
           keyCanvas.height = target;
         }
         keyCtx.clearRect(0, 0, target, target);
-        keyCtx.drawImage(ballGif, sx, sy, side, side, 0, 0, target, target);
+        keyCtx.drawImage(video, sx, sy, side, side, 0, 0, target, target);
 
         if (!chromaKeyDisabled && CONFIG.chromaKeyThreshold > 0) {
           try {
@@ -185,7 +177,7 @@
             const threshold = CONFIG.chromaKeyThreshold;
             const cutoff = 255 - threshold;
             for (let i = 0; i < data.length; i += 4) {
-              if (data[i + 3] === 0) continue; // already transparent
+              if (data[i + 3] === 0) continue;
               const r = data[i], g = data[i + 1], b = data[i + 2];
               const m = r < g ? (r < b ? r : b) : (g < b ? g : b);
               if (m >= cutoff) {
@@ -289,6 +281,7 @@
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', resize);
       window.removeEventListener('resize', computeTarget);
+      try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
       overlay.remove();
       if (onClosed) onClosed();
     }

@@ -58,19 +58,14 @@
   </main>
 
   <script>
-  // Inlined copy of disco-ball.js, with urlMatch loosened and asset URLs
-  // pointing at local files so the mockup works opened directly from disk.
   (function () {
     const CONFIG = {
       urlMatch: [/.*/],
-      gifUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball600x.gif',
+      videoUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball-vid.mp4',
       imageUrl: 'https://raw.githubusercontent.com/Roxanne-Zest/Discoball/main/Discoball.png',
       imageBallCx: 520,
       imageBallCy: 585,
       imageBallR: 335,
-      gifBallCx: 450,
-      gifBallCy: 510,
-      gifBallR: 320,
       ballRadius: 140,
       dropMs: 1150,
       retractMs: 700,
@@ -78,7 +73,7 @@
       swayPeriodMs: 2800,
       spotIntervalMs: 90,
       zIndex: 2147483600,
-      chromaKeyThreshold: 40,
+      chromaKeyThreshold: 55,
     };
 
     if (window.top !== window.self) return;
@@ -88,19 +83,6 @@
     const ballImage = new Image();
     ballImage.crossOrigin = 'anonymous';
     ballImage.src = CONFIG.imageUrl;
-
-    const ballGif = new Image();
-    ballGif.crossOrigin = 'anonymous';
-    ballGif.src = CONFIG.gifUrl;
-    Object.assign(ballGif.style, {
-      position: 'fixed', left: '0', top: '0', width: '1px', height: '1px',
-      opacity: '0.01', pointerEvents: 'none', zIndex: '-1',
-    });
-    function attachGif() {
-      if (!ballGif.isConnected && document.body) document.body.appendChild(ballGif);
-    }
-    if (document.body) attachGif();
-    else document.addEventListener('DOMContentLoaded', attachGif, { once: true });
 
     function init() {
       const trigger = document.createElement('button');
@@ -151,6 +133,19 @@
       });
       overlay.appendChild(endBtn);
 
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.src = CONFIG.videoUrl;
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.autoplay = true;
+      video.preload = 'auto';
+      video.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;';
+      overlay.appendChild(video);
+      const playAttempt = video.play();
+      if (playAttempt && typeof playAttempt.catch === 'function') playAttempt.catch(() => {});
+
       const ctx = canvas.getContext('2d');
 
       const keyCanvas = document.createElement('canvas');
@@ -200,21 +195,21 @@
       }
 
       function drawBall(bx, by) {
-        const gifReady = ballGif.complete && ballGif.naturalWidth > 0;
+        const videoReady = video.readyState >= 2 && video.videoWidth > 0;
         const pngReady = ballImage.complete && ballImage.naturalWidth > 0;
 
-        if (gifReady) {
-          const gCx = CONFIG.gifBallCx, gCy = CONFIG.gifBallCy, gR = CONFIG.gifBallR;
-          const sx = gCx - gR;
-          const sy = gCy - gR;
-          const side = gR * 2;
+        if (videoReady) {
+          const vw = video.videoWidth, vh = video.videoHeight;
+          const side = Math.min(vw, vh);
+          const sx = (vw - side) / 2;
+          const sy = (vh - side) / 2;
           const target = Math.max(64, Math.ceil(R * 2 * DPR));
           if (keyCanvas.width !== target) {
             keyCanvas.width = target;
             keyCanvas.height = target;
           }
           keyCtx.clearRect(0, 0, target, target);
-          keyCtx.drawImage(ballGif, sx, sy, side, side, 0, 0, target, target);
+          keyCtx.drawImage(video, sx, sy, side, side, 0, 0, target, target);
 
           if (!chromaKeyDisabled && CONFIG.chromaKeyThreshold > 0) {
             try {
@@ -327,6 +322,7 @@
         cancelAnimationFrame(rafId);
         window.removeEventListener('resize', resize);
         window.removeEventListener('resize', computeTarget);
+        try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
         overlay.remove();
         if (onClosed) onClosed();
       }
