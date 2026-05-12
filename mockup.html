@@ -58,12 +58,12 @@
   </main>
 
   <script>
-  // Inlined copy of disco-ball.js, with urlMatch loosened and the image URL
-  // pointing at the local PNG so the mockup works opened directly from disk.
+  // Inlined copy of disco-ball.js, with urlMatch loosened and asset URLs
+  // pointing at local files so the mockup works opened directly from disk.
   (function () {
     const CONFIG = {
       urlMatch: [/.*/],
-      videoUrl: 'Discoball-vid.mp4',
+      gifUrl: 'Discoball600x.gif',
       imageUrl: 'Discoball.png',
       imageBallCx: 520,
       imageBallCy: 585,
@@ -75,7 +75,7 @@
       swayPeriodMs: 2800,
       spotIntervalMs: 90,
       zIndex: 2147483600,
-      chromaKeyThreshold: 55,
+      chromaKeyThreshold: 40,
     };
 
     if (window.top !== window.self) return;
@@ -84,6 +84,9 @@
 
     const ballImage = new Image();
     ballImage.src = CONFIG.imageUrl;
+
+    const ballGif = new Image();
+    ballGif.src = CONFIG.gifUrl;
 
     function init() {
       const trigger = document.createElement('button');
@@ -134,17 +137,6 @@
       });
       overlay.appendChild(endBtn);
 
-      const video = document.createElement('video');
-      video.src = CONFIG.videoUrl;
-      video.muted = true;
-      video.loop = true;
-      video.playsInline = true;
-      video.preload = 'auto';
-      video.style.display = 'none';
-      overlay.appendChild(video);
-      const playAttempt = video.play();
-      if (playAttempt && typeof playAttempt.catch === 'function') playAttempt.catch(() => {});
-
       const ctx = canvas.getContext('2d');
 
       const keyCanvas = document.createElement('canvas');
@@ -193,11 +185,83 @@
         return startY;
       }
 
+      function drawBall(bx, by) {
+        const gifReady = ballGif.complete && ballGif.naturalWidth > 0;
+        const pngReady = ballImage.complete && ballImage.naturalWidth > 0;
+
+        if (gifReady) {
+          const vw = ballGif.naturalWidth, vh = ballGif.naturalHeight;
+          const side = Math.min(vw, vh);
+          const sx = (vw - side) / 2;
+          const sy = (vh - side) / 2;
+          const target = Math.max(64, Math.ceil(R * 2 * DPR));
+          if (keyCanvas.width !== target) {
+            keyCanvas.width = target;
+            keyCanvas.height = target;
+          }
+          keyCtx.clearRect(0, 0, target, target);
+          keyCtx.drawImage(ballGif, sx, sy, side, side, 0, 0, target, target);
+
+          if (!chromaKeyDisabled && CONFIG.chromaKeyThreshold > 0) {
+            try {
+              const img = keyCtx.getImageData(0, 0, target, target);
+              const data = img.data;
+              const threshold = CONFIG.chromaKeyThreshold;
+              const cutoff = 255 - threshold;
+              for (let i = 0; i < data.length; i += 4) {
+                if (data[i + 3] === 0) continue;
+                const r = data[i], g = data[i + 1], b = data[i + 2];
+                const m = r < g ? (r < b ? r : b) : (g < b ? g : b);
+                if (m >= cutoff) {
+                  const a = (255 - m) * (255 / threshold);
+                  const clamped = a < 0 ? 0 : (a > 255 ? 255 : a);
+                  if (clamped < data[i + 3]) data[i + 3] = clamped;
+                }
+              }
+              keyCtx.putImageData(img, 0, 0);
+            } catch (e) {
+              chromaKeyDisabled = true;
+            }
+          }
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(bx, by, R, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(keyCanvas, bx - R, by - R, R * 2, R * 2);
+          ctx.restore();
+        } else if (pngReady) {
+          const sCx = CONFIG.imageBallCx, sCy = CONFIG.imageBallCy, sR = CONFIG.imageBallR;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(bx, by, R, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(
+            ballImage,
+            sCx - sR, sCy - sR, sR * 2, sR * 2,
+            bx - R, by - R, R * 2, R * 2
+          );
+          ctx.restore();
+        } else {
+          ctx.fillStyle = '#222';
+          ctx.beginPath();
+          ctx.arc(bx, by, R, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const rim = ctx.createRadialGradient(bx, by, R * 0.92, bx, by, R);
+        rim.addColorStop(0, 'rgba(0,0,0,0)');
+        rim.addColorStop(1, 'rgba(0,0,0,0.55)');
+        ctx.fillStyle = rim;
+        ctx.beginPath();
+        ctx.arc(bx, by, R, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       function frame(now) {
         const by = ballY(now);
         const swayRad = (CONFIG.swayDeg * Math.PI / 180) *
           Math.sin((now - startedAt) / CONFIG.swayPeriodMs * Math.PI * 2);
-        const bx = W / 2 + Math.sin(swayRad) * by;
+        const bx = W / 2 + Math.sin(swayRad) * Math.max(0, by);
         const active = phase === 'dropping' || phase === 'settled';
 
         ctx.clearRect(0, 0, W, H);
@@ -222,72 +286,7 @@
         ctx.lineTo(bx, by - R);
         ctx.stroke();
 
-        if (video.readyState >= 2 && video.videoWidth > 0) {
-          const vw = video.videoWidth, vh = video.videoHeight;
-          const side = Math.min(vw, vh);
-          const sx = (vw - side) / 2;
-          const sy = (vh - side) / 2;
-          const target = Math.max(64, Math.ceil(R * 2 * DPR));
-          if (keyCanvas.width !== target) {
-            keyCanvas.width = target;
-            keyCanvas.height = target;
-          }
-          keyCtx.clearRect(0, 0, target, target);
-          keyCtx.drawImage(video, sx, sy, side, side, 0, 0, target, target);
-
-          if (!chromaKeyDisabled && CONFIG.chromaKeyThreshold > 0) {
-            try {
-              const img = keyCtx.getImageData(0, 0, target, target);
-              const data = img.data;
-              const threshold = CONFIG.chromaKeyThreshold;
-              const cutoff = 255 - threshold;
-              for (let i = 0; i < data.length; i += 4) {
-                const r = data[i], g = data[i + 1], b = data[i + 2];
-                const m = r < g ? (r < b ? r : b) : (g < b ? g : b);
-                if (m >= cutoff) {
-                  const a = (255 - m) * (255 / threshold);
-                  data[i + 3] = a < 0 ? 0 : (a > 255 ? 255 : a);
-                }
-              }
-              keyCtx.putImageData(img, 0, 0);
-            } catch (e) {
-              chromaKeyDisabled = true;
-            }
-          }
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(bx, by, R, 0, Math.PI * 2);
-          ctx.clip();
-          ctx.drawImage(keyCanvas, bx - R, by - R, R * 2, R * 2);
-          ctx.restore();
-        } else if (ballImage.complete && ballImage.naturalWidth > 0) {
-          const sCx = CONFIG.imageBallCx;
-          const sCy = CONFIG.imageBallCy;
-          const sR  = CONFIG.imageBallR;
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(bx, by, R, 0, Math.PI * 2);
-          ctx.clip();
-          ctx.drawImage(
-            ballImage,
-            sCx - sR, sCy - sR, sR * 2, sR * 2,
-            bx - R, by - R, R * 2, R * 2
-          );
-          ctx.restore();
-        } else {
-          ctx.fillStyle = '#222';
-          ctx.beginPath();
-          ctx.arc(bx, by, R, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        const rim = ctx.createRadialGradient(bx, by, R * 0.92, bx, by, R);
-        rim.addColorStop(0, 'rgba(0,0,0,0)');
-        rim.addColorStop(1, 'rgba(0,0,0,0.55)');
-        ctx.fillStyle = rim;
-        ctx.beginPath();
-        ctx.arc(bx, by, R, 0, Math.PI * 2);
-        ctx.fill();
+        drawBall(bx, by);
 
         if (active && now - lastSpotAt > CONFIG.spotIntervalMs) {
           lastSpotAt = now;
@@ -314,7 +313,6 @@
         cancelAnimationFrame(rafId);
         window.removeEventListener('resize', resize);
         window.removeEventListener('resize', computeTarget);
-        try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
         overlay.remove();
         if (onClosed) onClosed();
       }
